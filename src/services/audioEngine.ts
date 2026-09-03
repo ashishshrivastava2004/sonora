@@ -172,22 +172,34 @@ class HighFidelityAudioEngine {
           });
         }
 
-        const streamUrl = track.audioUrl.startsWith('http')
+        // Direct CDN playback provides instant 320kbps streaming with zero serverless timeout limits
+        const directUrl = track.audioUrl;
+        const proxyUrl = track.audioUrl.startsWith('http')
           ? `/api/music-api/stream?url=${encodeURIComponent(track.audioUrl)}`
           : track.audioUrl;
 
-        this.customAudioElement.src = streamUrl;
-        this.customAudioElement.currentTime = startTime;
+        const tryPlay = (url: string, isProxyAttempt = false) => {
+          if (!this.customAudioElement) return;
+          this.customAudioElement.src = url;
+          this.customAudioElement.currentTime = startTime;
 
-        const playPromise = this.customAudioElement.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((err) => {
-            console.warn('Direct stream playback error, falling back to synthesizer:', err);
-            this.startMusicSynthesis(track, startTime);
-          });
-        }
+          const playPromise = this.customAudioElement.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((err) => {
+              if (!isProxyAttempt && url !== proxyUrl) {
+                console.warn('Direct CDN playback notice, attempting streaming proxy fallback:', err);
+                tryPlay(proxyUrl, true);
+              } else {
+                console.warn('Stream proxy error, falling back to generative synthesizer:', err);
+                this.startMusicSynthesis(track, startTime);
+              }
+            });
+          }
+        };
+
+        tryPlay(directUrl);
       } catch (err) {
-        console.warn('Audio stream error, falling back to synthesizer:', err);
+        console.warn('Audio stream setup error, falling back to synthesizer:', err);
         this.startMusicSynthesis(track, startTime);
       }
     } else {
